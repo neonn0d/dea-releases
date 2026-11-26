@@ -1,0 +1,99 @@
+name: build
+
+# Builds Dea's downloads for a version, started by hand:
+#   gh workflow run build.yml -R neonn0d/dea-releases -f tag=v1.2.3
+# The app's code is read for the build and thrown away with the machine; only
+# the finished installers are uploaded, to a draft release here. The draft is
+# checked and published by hand.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag in the app repo, e.g. v1.2.3"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  draft:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Not a version tag: $TAG"; exit 1; }
+          gh release view "$TAG" > /dev/null 2>&1 || gh release create "$TAG" --draft --target main --title "Dea ${TAG#v}" --notes "Draft: downloads are being built."
+
+  build:
+    needs: draft
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-2022, arch: x64, args: --win --x64 }
+          - { os: macos-15, arch: arm64, args: --mac --arm64 }
+          - { os: macos-15-intel, arch: x64, args: --mac --x64 }
+          - { os: ubuntu-24.04, arch: x64, args: --linux --x64 }
+    runs-on: ${{ matrix.os }}
+    env:
+      DEA_EXPECTED_ARCH: ${{ matrix.arch }}
+    steps:
+      - name: Get the app's code at this version
+        uses: actions/checkout@v4
+        with:
+          repository: neonn0d/dea
+          ref: ${{ inputs.tag }}
+          token: ${{ secrets.DEA_SOURCE_TOKEN }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check version and architecture
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          node -e "const a=require('node:assert/strict');a.equal(process.env.TAG,'v'+require('./package.json').version);a.equal(process.arch,process.env.DEA_EXPECTED_ARCH)"
+      - name: Install Linux build tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libgtk-3-0t64 libnss3 libasound2t64 libgbm1 libarchive-tools
+      - name: Install
+        run: npm ci
+      - name: Check the terminal works
+        run: node test/terminal-native.cjs
+      - name: Package
+        run: npx --no-install electron-builder ${{ matrix.args }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Upload the installers to the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$(gh release view "$TAG" --json isDraft -q .isDraft)" != "true" ]; then
+            echo "Already published; leaving its downloads alone."
+            exit 0
+          fi
+          shopt -s nullglob
+          files=(dist/*.exe dist/*.dmg dist/*.zip dist/*.AppImage dist/*.deb dist/*.pkg.tar.xz)
+          [ ${#files[@]} -gt 0 ] || { echo "No installers built"; exit 1; }
+          gh release upload "$TAG" "${files[@]}" --clobber
