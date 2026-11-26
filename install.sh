@@ -73,6 +73,11 @@ fail() {
 have curl || { printf 'Dea install: curl is needed.\n' >&2; exit 1; }
 os=$(uname -s)
 machine=$(uname -m)
+# A package install needs root. Ask for the password now, before the figure is
+# drawn, so the question does not land in the middle of it.
+if [ "$os" = "Linux" ] && [ -z "${DEA_DRY_RUN:-}" ] && [ "$(id -u)" != "0" ] && have sudo && { [ "${DEA_KIND:-}" = "pacman" ] || [ "${DEA_KIND:-}" = "deb" ] || { [ -z "${DEA_KIND:-}" ] && { have pacman || have apt-get; }; }; }; then
+  sudo -n true 2>/dev/null || { printf 'Installing Dea as a system package needs your password.\n'; sudo -v || { printf 'Dea install: no password given, nothing installed.\n' >&2; exit 1; }; }
+fi
 banner
 
 # ---- which release file suits this computer ----
@@ -159,7 +164,14 @@ ok "Checksum matches"
 
 # sudo for a package install; plain when already root. The password question
 # appears under the figure.
-as_root() { if [ "$(id -u)" = "0" ]; then "$@"; elif have sudo; then sudo "$@"; else fail "This step needs root. Run it yourself: $*"; fi; }
+as_root() {
+  if [ "$(id -u)" = "0" ]; then "$@"; return; fi
+  have sudo || fail "This step needs root. Run it yourself: $*"
+  # A password question prints lines of its own; under the figure they would
+  # push the steps out of place, so the rest is printed as plain lines.
+  if [ "$FANCY" = 1 ] && ! sudo -n true 2>/dev/null; then FANCY=0; B=""; D=""; G=""; E=""; R=""; printf '\n'; fi
+  sudo "$@"
+}
 
 case "$kind" in
   mac)
@@ -193,9 +205,10 @@ case "$kind" in
   appimage)
     bin="${DEA_BIN_DIR:-$HOME/.local/bin}"
     data="${XDG_DATA_HOME:-$HOME/.local/share}"
-    mkdir -p "$bin" "$data/applications"
+    mkdir -p "$bin" "$data/applications" "$data/icons/hicolor/256x256/apps"
     mv "$tmp/$name" "$bin/dea"
     chmod +x "$bin/dea"
+    curl -fsSL --retry 2 -o "$data/icons/hicolor/256x256/apps/dea.png" "https://raw.githubusercontent.com/$REPO/main/dea.png" 2>/dev/null || true
     cat > "$data/applications/dea.desktop" <<EOF
 [Desktop Entry]
 Name=Dea
