@@ -4,16 +4,24 @@
 
 <p align="center">A browser, a terminal and a local MCP server in one window.<br>You browse and code; your coding agent drives the same browser beside you.</p>
 
+<p align="center"><a href="https://dea.dardanica.app"><b>dea.dardanica.app</b></a> · <a href="https://dea.dardanica.app/docs/">Documentation</a></p>
+
 ## Download
 
-Get the latest version from **[Releases](https://github.com/neonn0d/dea-releases/releases/latest)**.
+On macOS or Linux, install it with one line:
+
+```sh
+curl -fsSL https://dea.dardanica.app/install | sh
+```
+
+Or get the latest version from **[Releases](https://github.com/neonn0d/dea-releases/releases/latest)** or the [website](https://dea.dardanica.app/#downloads).
 
 | Platform | File |
 | --- | --- |
 | Windows x64 | `Dea-<version>-windows-x64.exe` (installer) or `.zip` |
 | macOS Apple Silicon | `Dea-<version>-arm64.dmg` or `.zip` |
 | macOS Intel | `Dea-<version>-x64.dmg` or `.zip` |
-| Linux x64 | `Dea-<version>-x86_64.AppImage` or `Dea-<version>-amd64.deb` |
+| Linux x64 | `Dea-<version>-x86_64.AppImage`, `Dea-<version>-amd64.deb` or `Dea-<version>-x86_64.pkg.tar.xz` (Arch) |
 
 The builds are not signed yet, so Windows and macOS show a security prompt the
 first time you open Dea. On macOS, allow it in System Settings → Privacy &
